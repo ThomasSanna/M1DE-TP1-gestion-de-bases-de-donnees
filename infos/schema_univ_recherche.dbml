@@ -1,0 +1,182 @@
+////////////////////////////////////////////////////////////
+// DBML - Schéma relationnel (FR) – Université / Recherche //
+// Date: 2025-10-04                                       //
+//////////////////////////////////////////////////////////// https://dbdiagram.io/d
+
+Enum type_institution {
+  universite
+  organisme_recherche
+  partenaire_prive
+}
+
+Enum type_contrat {
+  ANR
+  H2020
+  Region
+  Europe
+  Autre
+}
+
+Enum statut_dmp {
+  brouillon
+  soumis
+  valide
+}
+
+Table institution {
+  id                bigint [pk, increment]
+  nom               text   [not null]
+  type_institution  type_institution [not null]
+  adresse           text
+
+  Note: 'Institution de rattachement: université, organisme de recherche ou partenaire privé.'
+
+  Indexes {
+    (nom, type_institution) [unique, name: 'uq_institution_nom_type']
+  }
+}
+
+Table laboratoire {
+  id              bigint [pk, increment]
+  nom             text   [not null]
+  id_institution  bigint [not null]
+
+  Note: 'Chaque laboratoire est rattaché à une unique institution.'
+
+  Indexes {
+    (nom, id_institution) [unique, name: 'uq_laboratoire_nom_institution']
+    id_institution [name: 'idx_laboratoire_institution']
+  }
+}
+
+Table projet {
+  id                        bigint [pk, increment]
+  titre                     text   [not null]
+  description               text
+  discipline                text   [not null]
+  budget_annuel_eur         decimal(12,2) [not null, note: '>= 0']
+  date_debut                date   [not null]
+  date_fin                  date   [note: '>= date_debut ou NULL']
+  id_laboratoire_pilote     bigint [not null]
+  id_chercheur_responsable  bigint
+
+  Note: 'Projet structurant dirigé par un unique chercheur; le responsable appartient au laboratoire pilote (règle métier).'
+
+  Indexes {
+    id_laboratoire_pilote [name: 'idx_projet_laboratoire_pilote']
+  }
+}
+
+Table chercheur {
+  id              bigint [pk, increment]
+  prenom          text   [not null]
+  nom             text   [not null]
+  email           text   [not null, unique]
+  orcid           varchar(19) [unique, note: 'Format ORCID: 0000-0000-0000-0000']
+  discipline      text
+  id_laboratoire  bigint [not null]
+
+  Indexes {
+    id_laboratoire [name: 'idx_chercheur_laboratoire']
+  }
+}
+
+Table contrat {
+  id                   bigint [pk, increment]
+  type_contrat         type_contrat [not null]
+  financeur            text   [not null]
+  intitule             text   [not null]
+  montant_eur          decimal(14,2) [not null, note: '>= 0']
+  duree_mois           int    [note: '> 0 ou NULL']
+  date_debut           date   [not null]
+  date_fin             date   [not null, note: '>= date_debut']
+  id_projet            bigint [not null]
+  statut_dmp           statut_dmp [not null, default: 'brouillon']
+  date_validation_dmp  date
+  url_document_dmp     text
+
+  Note: 'Un contrat finance exactement un projet; si le DMP est "valide", date et URL doivent être renseignées.'
+
+  Indexes {
+    id_projet [name: 'idx_contrat_projet']
+  }
+}
+
+Table publication {
+  id                bigint [pk, increment]
+  titre             text   [not null]
+  doi               text   [unique]
+  date_publication  date
+  nb_pages          int    [note: '> 0 ou NULL']
+  url_externe       text
+
+  Note: 'Métadonnées uniquement; fichiers (PDF) stockés hors base (ex. HAL).'
+}
+
+Table publication_auteur {
+  id_publication  bigint [not null]
+  id_chercheur    bigint [not null]
+  ordre_auteur    int    [not null, default: 1, note: '> 0']
+
+  Note: 'Relation N-N entre publications et auteurs; ordre d’auteur unique par publication.'
+
+  Indexes {
+    (id_publication, id_chercheur) [pk]
+    (id_publication, ordre_auteur) [unique, name: 'uq_publication_ordre']
+    id_chercheur [name: 'idx_publication_auteur_chercheur']
+  }
+}
+
+Table jeu_donnees {
+  id                bigint [pk, increment]
+  id_contrat        bigint [not null]
+  description       text   [not null]
+  id_auteur         bigint [not null]
+  conditions_acces  text
+  licence           text
+  date_depot        date   [note: 'Autorisé uniquement si le DMP du contrat est validé']
+  url_externe       text
+
+  Note: 'Métadonnées de datasets; dépôt officiel soumis à la validation du DMP.'
+
+  Indexes {
+    id_contrat [name: 'idx_jeu_donnees_contrat']
+    id_auteur  [name: 'idx_jeu_donnees_auteur']
+  }
+}
+
+Table projet_chercheur {
+  id              bigint [pk, increment]
+  id_projet       bigint [not null]
+  id_chercheur    bigint [not null]
+  role            text
+  date_debut      date
+  date_fin        date
+  charge_pct      decimal(5,2) [note: 'Pourcentage d\'effort (0-100)']
+  is_principal    boolean [default: false]
+
+  Note: 'Table associative gérant la relation N-N entre projets et chercheurs; unique (id_projet, id_chercheur).'
+
+  Indexes {
+    (id_projet, id_chercheur) [pk]
+    (id_projet, charge_pct) [name: 'idx_projet_chercheur_charge']
+    id_chercheur [name: 'idx_projet_chercheur_chercheur']
+  }
+}
+
+// Relations avec politiques de mise à jour/suppression
+Ref: laboratoire.id_institution > institution.id [update: restrict, delete: restrict]
+Ref: projet.id_laboratoire_pilote > laboratoire.id [update: restrict, delete: restrict]
+Ref: projet.id_chercheur_responsable > chercheur.id [update: restrict, delete: set null]
+Ref: chercheur.id_laboratoire > laboratoire.id [update: restrict, delete: restrict]
+Ref: projet_chercheur.id_projet > projet.id [update: restrict, delete: cascade]
+Ref: projet_chercheur.id_chercheur > chercheur.id [update: restrict, delete: cascade]
+Ref: contrat.id_projet > projet.id [update: restrict, delete: restrict]
+Ref: publication_auteur.id_publication > publication.id [update: restrict, delete: cascade]
+Ref: publication_auteur.id_chercheur > chercheur.id [update: restrict, delete: restrict]
+Ref: jeu_donnees.id_contrat > contrat.id [update: restrict, delete: restrict]
+Ref: jeu_donnees.id_auteur > chercheur.id [update: restrict, delete: restrict]
+
+// Règles métier non directement représentables en DBML (déclarées en notes):
+// - Le responsable du projet doit être un chercheur affecté à ce projet et appartenir au laboratoire pilote (enforcé par trigger).
+// - DMP au statut "valide" requis pour autoriser un dépôt (date_depot non NULL) d’un jeu de données (enforcé par trigger).
