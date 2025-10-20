@@ -24,8 +24,7 @@ CREATE TABLE IF NOT EXISTS institution (
     id                  BIGSERIAL PRIMARY KEY,
     nom                 TEXT NOT NULL,
     type_institution    type_institution NOT NULL,
-    adresse             TEXT,
-    CONSTRAINT uq_institution_nom_type UNIQUE (nom, type_institution)
+    adresse             TEXT
 );
 
 CREATE TABLE IF NOT EXISTS laboratoire (
