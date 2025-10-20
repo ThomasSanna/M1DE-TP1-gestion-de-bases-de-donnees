@@ -38,6 +38,13 @@ def random_date_between(start: date, end: date) -> date:
 def main(rows: int) -> None:
     fake = Faker(locale="fr_FR")
     schema_file = Path(__file__).parent.parent / "infos" / "schema_univ_recherche.sql"
+    
+    # Ensembles pour garantir l'unicité
+    emails_used = set()
+    orcids_used = set()
+    dois_used = set()
+    lab_names_per_institution = {}  # {id_institution: set(noms)}
+    
     with INSERTS_PG.open("w", encoding="utf-8") as f:
         f.write("-- PostgreSQL dump generated (synthetic data)\nBEGIN;\n")
         if schema_file.exists():
@@ -61,8 +68,23 @@ def main(rows: int) -> None:
         # Laboratoires
         laboratoires = []
         for lid in range(1, max(5, rows // 8) + 1):
-            nom = fake.bs().capitalize() + " Lab"
             id_institution = random.choice(institutions)
+            if id_institution not in lab_names_per_institution:
+                lab_names_per_institution[id_institution] = set()
+            
+            # Générer un nom unique pour cette institution
+            attempts = 0
+            while attempts < 100:
+                nom = fake.bs().capitalize() + " Lab"
+                if nom not in lab_names_per_institution[id_institution]:
+                    lab_names_per_institution[id_institution].add(nom)
+                    break
+                attempts += 1
+            else:
+                # Fallback: ajouter un suffixe unique
+                nom = f"{fake.bs().capitalize()} Lab {lid}"
+                lab_names_per_institution[id_institution].add(nom)
+            
             laboratoires.append(lid)
             f.write(f"INSERT INTO univ_recherche.laboratoire (id, nom, id_institution) VALUES ({lid}, {_quote_sql(nom)}, {id_institution});\n")
         f.write("SELECT setval(pg_get_serial_sequence('univ_recherche.laboratoire','id'), COALESCE((SELECT MAX(id) FROM univ_recherche.laboratoire),0));\n")
@@ -73,8 +95,36 @@ def main(rows: int) -> None:
         for _ in range(max(20, rows)):
             prenom = fake.first_name()
             nom = fake.last_name()
-            email = (prenom + "." + nom + "@" + fake.domain_name()).lower()
-            orcid = gen_orcid(fake) if random.random() < 0.5 else None
+            
+            # Générer un email unique
+            attempts = 0
+            while attempts < 100:
+                if attempts == 0:
+                    email = (prenom + "." + nom + "@" + fake.domain_name()).lower()
+                else:
+                    email = (prenom + "." + nom + str(attempts) + "@" + fake.domain_name()).lower()
+                if email not in emails_used:
+                    emails_used.add(email)
+                    break
+                attempts += 1
+            else:
+                # Fallback: email avec ID unique
+                email = f"chercheur{cid}@" + fake.domain_name()
+                emails_used.add(email)
+            
+            # Générer un ORCID unique ou NULL
+            orcid = None
+            if random.random() < 0.5:
+                attempts = 0
+                while attempts < 100:
+                    orcid_candidate = gen_orcid(fake)
+                    if orcid_candidate not in orcids_used:
+                        orcids_used.add(orcid_candidate)
+                        orcid = orcid_candidate
+                        break
+                    attempts += 1
+                # Si échec après 100 tentatives, on laisse NULL
+            
             discipline = random.choice(["Physique", "Biologie", "Informatique", "Chimie", "Mathématiques"])
             id_labo = random.choice(laboratoires)
             chercheurs.append(cid)
@@ -141,13 +191,26 @@ def main(rows: int) -> None:
         pid = 1
         for _ in range(max(10, rows // 5)):
             titre = fake.sentence(nb_words=6)
-            doi = None if random.random() < 0.6 else f"10.{random.randint(1000,9999)}/{fake.lexify(text='??????')}"
+            
+            # Générer un DOI unique ou NULL
+            doi = None
+            if random.random() >= 0.6:
+                attempts = 0
+                while attempts < 100:
+                    doi_candidate = f"10.{random.randint(1000,9999)}/{fake.lexify(text='??????')}"
+                    if doi_candidate not in dois_used:
+                        dois_used.add(doi_candidate)
+                        doi = doi_candidate
+                        break
+                    attempts += 1
+                # Si échec après 100 tentatives, on laisse NULL
+            
             date_pub = fake.date_between(start_date='-5y', end_date='today')
             nb_pages = random.randint(1, 20) if random.random() < 0.8 else None
             url = fake.url() if random.random() < 0.5 else None
             publications.append(pid)
             f.write(f"INSERT INTO univ_recherche.publication (id, titre, doi, date_publication, nb_pages, url_externe) VALUES ({pid}, {_quote_sql(titre)}, {_quote_sql(doi)}, {_quote_sql(date_pub)}, {_quote_sql(nb_pages)}, {_quote_sql(url)});\n")
-            # auteurs
+            # auteurs (ordre_auteur doit être unique par publication - déjà garanti par enumerate)
             n_auth = random.randint(1, min(5, max(1, len(chercheurs))))
             auteurs = random.sample(chercheurs, n_auth)
             for i, aid in enumerate(auteurs, start=1):
@@ -155,10 +218,11 @@ def main(rows: int) -> None:
             pid += 1
         f.write("SELECT setval(pg_get_serial_sequence('univ_recherche.publication','id'), COALESCE((SELECT MAX(id) FROM univ_recherche.publication),0));\n")
 
-        # Projet-Chercheur associations
+        # Projet-Chercheur associations (garantir unicité via random.sample)
         pcid = 1
         for projet_id in projets:
             n = random.randint(1, min(6, len(chercheurs)))
+            # random.sample garantit déjà l'unicité - pas de doublon possible
             membres = random.sample(chercheurs, n)
             for m in membres:
                 role = random.choice(["Investigateur", "Doctorant", "PostDoc", "Technicien"])
@@ -175,5 +239,5 @@ def main(rows: int) -> None:
     print(f"inserts_postgres.sql créé: {INSERTS_PG}")
 
 if __name__ == "__main__":
-    nb_rows = 200000
+    nb_rows = 50000
     main(nb_rows)
