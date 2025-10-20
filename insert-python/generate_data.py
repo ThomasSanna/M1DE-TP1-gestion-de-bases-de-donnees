@@ -175,7 +175,5 @@ def main(rows: int) -> None:
     print(f"inserts_postgres.sql créé: {INSERTS_PG}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Générateur de données pour le schéma univ_recherche (PostgreSQL uniquement)")
-    parser.add_argument("--rows", type=int, default=50, help="Taille indicative (influence le nombre d'objets)")
-    args = parser.parse_args()
-    main(args.rows)
+    nb_rows = 200000
+    main(nb_rows)

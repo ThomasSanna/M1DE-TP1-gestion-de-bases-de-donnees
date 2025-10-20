@@ -149,5 +149,3 @@ CREATE TABLE IF NOT EXISTS projet_chercheur (
     CONSTRAINT chk_charge_pct CHECK (charge_pct IS NULL OR (charge_pct >= 0 AND charge_pct <= 100)),
     CONSTRAINT chk_dates_pc CHECK (date_fin IS NULL OR date_fin >= date_debut)
 );
-
--- Fin du script FR (version simplifiée: index, triggers, fonctions et vue supprimés)
