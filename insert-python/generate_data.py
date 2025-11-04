@@ -152,6 +152,7 @@ def main(rows: int) -> None:
         # Contrats
         types_contrat = ["ANR", "H2020", "Region", "Europe", "Autre"]
         contrats = []
+        contrats_valides = []  # Pour stocker les contrats avec statut validé
         coid = 1
         for _ in range(max(10, rows // 4)):
             t = random.choice(types_contrat)
@@ -166,6 +167,8 @@ def main(rows: int) -> None:
             date_val = fake.date_between(start_date=d_deb, end_date='today') if statut == 'valide' else None
             url_dmp = fake.url() if statut == 'valide' else None
             contrats.append(coid)
+            if statut == 'valide':
+                contrats_valides.append(coid)
             f.write(f"INSERT INTO univ_recherche.contrat (id, type_contrat, financeur, intitule, montant_eur, duree_mois, date_debut, date_fin, id_projet, statut_dmp, date_validation_dmp, url_document_dmp) VALUES ({coid}, {_quote_sql(t)}, {_quote_sql(financeur)}, {_quote_sql(intitule)}, {montant}, {_quote_sql(duree)}, {_quote_sql(d_deb)}, {_quote_sql(d_fin)}, {id_projet}, {_quote_sql(statut)}, {_quote_sql(date_val)}, {_quote_sql(url_dmp)});\n")
             coid += 1
         f.write("SELECT setval(pg_get_serial_sequence('univ_recherche.contrat','id'), COALESCE((SELECT MAX(id) FROM univ_recherche.contrat),0));\n")
@@ -174,17 +177,23 @@ def main(rows: int) -> None:
         jeux = []
         jid = 1
         for _ in range(max(5, rows // 6)):
-            id_contrat = random.choice(contrats)
+            # Choisir un contrat (validé si on veut une date_depot)
+            if contrats_valides and random.random() < 0.4:
+                id_contrat = random.choice(contrats_valides)
+                date_depot = fake.date_between(start_date='-2y', end_date='today')
+            else:
+                id_contrat = random.choice(contrats)
+                date_depot = None
             description = fake.sentence(nb_words=12)
             id_auteur = random.choice(chercheurs)
             conditions = random.choice(["ouvert", "restreint", "sur_demande"])
             licence = random.choice(["CC-BY", "CC0", "ODbL", None])
-            date_depot = fake.date_between(start_date='-2y', end_date='today') if random.random() < 0.4 else None
             url = fake.url() if random.random() < 0.5 else None
             jeux.append(jid)
             f.write(f"INSERT INTO univ_recherche.jeu_donnees (id, id_contrat, description, id_auteur, conditions_acces, licence, date_depot, url_externe) VALUES ({jid}, {id_contrat}, {_quote_sql(description)}, {id_auteur}, {_quote_sql(conditions)}, {_quote_sql(licence)}, {_quote_sql(date_depot)}, {_quote_sql(url)});\n")
             jid += 1
         f.write("SELECT setval(pg_get_serial_sequence('univ_recherche.jeu_donnees','id'), COALESCE((SELECT MAX(id) FROM univ_recherche.jeu_donnees),0));\n")
+
 
         # Publications et auteurs
         publications = []

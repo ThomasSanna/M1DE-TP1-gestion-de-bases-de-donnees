@@ -1,6 +1,7 @@
 -- Schéma relationnel (français) pour la gestion des données de recherche (Université)
 -- Base: PostgreSQL
 -- Date: 2025-10-04
+-- Authors: Sanna Thomas, Furfaro Thomas, Chêne Arlette
 
 CREATE SCHEMA IF NOT EXISTS univ_recherche;
 SET search_path TO univ_recherche;
