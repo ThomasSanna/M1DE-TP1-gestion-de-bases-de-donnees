@@ -1,106 +1,180 @@
-### institution
+# Dictionnaire des Attributs
 
-| Attribut         | Type                                                    | Description          |
-| ---------------- | ------------------------------------------------------- | -------------------- |
-| id               | BIGSERIAL                                               | Identifiant unique   |
-| nom              | TEXT                                                    | Nom de l’institution |
-| type_institution | ENUM(universite, organisme_recherche, partenaire_prive) | Type d’institution   |
-| adresse          | TEXT                                                    | Adresse postale      |
+## Types énumérés
 
----
+### type_institution
+- `universite` : Université
+- `organisme_recherche` : Organisme de recherche
+- `partenaire_prive` : Partenaire privé
 
-### laboratoire
+### type_contrat
+- `ANR` : Agence Nationale de la Recherche
+- `H2020` : Horizon 2020 (programme européen)
+- `Region` : Financement régional
+- `Europe` : Financement européen
+- `Autre` : Autre type de financement
 
-| Attribut       | Type      | Description                                       |
-| -------------- | --------- | ------------------------------------------------- |
-| id             | BIGSERIAL | Identifiant unique                                |
-| nom            | TEXT      | Nom du laboratoire                                |
-| id_institution | BIGINT    | FK → institution.id (institution de rattachement) |
-
----
-
-### projet
-
-| Attribut                 | Type          | Description                                |
-| ------------------------ | ------------- | ------------------------------------------ |
-| id                       | BIGSERIAL     | Identifiant unique                         |
-| titre                    | TEXT          | Titre du projet                            |
-| description              | TEXT          | Description du projet                      |
-| discipline               | TEXT          | Discipline scientifique                    |
-| budget_annuel_eur        | NUMERIC(12,2) | Budget annuel (≥ 0)                        |
-| date_debut               | DATE          | Date de début                              |
-| date_fin                 | DATE          | Date de fin (≥ date_debut ou NULL)         |
-| id_laboratoire_pilote    | BIGINT        | FK → laboratoire.id (labo pilote)          |
-| id_chercheur_responsable | BIGINT        | FK → chercheur.id (responsable, optionnel) |
+### statut_dmp
+- `brouillon` : DMP en cours de rédaction
+- `soumis` : DMP soumis pour validation
+- `valide` : DMP validé
 
 ---
 
-### chercheur
+## Table: institution
 
-| Attribut       | Type        | Description                                    |
-| -------------- | ----------- | ---------------------------------------------- |
-| id             | BIGSERIAL   | Identifiant unique                             |
-| prenom         | TEXT        | Prénom                                         |
-| nom            | TEXT        | Nom                                            |
-| email          | TEXT        | Adresse email, unique                          |
-| orcid          | VARCHAR(19) | Identifiant ORCID (0000-0000-0000-0000)        |
-| discipline     | TEXT        | Discipline scientifique                        |
-| id_laboratoire | BIGINT      | FK → laboratoire.id (labo de rattachement)     |
- 
+**Description** : Institution de rattachement (université, organisme de recherche ou partenaire privé).
 
----
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique de l'institution |
+| nom | text | NOT NULL | Nom de l'institution |
+| type_institution | type_institution | NOT NULL | Type d'institution (enum) |
+| adresse | text | | Adresse postale de l'institution |
 
-### contrat
-
-| Attribut            | Type                                    | Description                         |
-| ------------------- | --------------------------------------- | ----------------------------------- |
-| id                  | BIGSERIAL                               | Identifiant unique                  |
-| type_contrat        | ENUM(ANR, H2020, Region, Europe, Autre) | Type de contrat                     |
-| financeur           | TEXT                                    | Financeur                           |
-| intitule            | TEXT                                    | Intitulé du contrat                 |
-| montant_eur         | NUMERIC(14,2)                           | Montant du financement (≥ 0)        |
-| duree_mois          | INTEGER                                 | Durée en mois (>0 ou NULL)          |
-| date_debut          | DATE                                    | Début du contrat                    |
-| date_fin            | DATE                                    | Fin du contrat (≥ date_debut)       |
-| id_projet           | BIGINT                                  | FK → projet.id                      |
-| statut_dmp          | ENUM(brouillon, soumis, valide)         | Statut du DMP                       |
-| date_validation_dmp | DATE                                    | Date de validation du DMP si valide |
-| url_document_dmp    | TEXT                                    | URL du document DMP si valide       |
+**Contraintes supplémentaires** :
+- UNIQUE(nom, type_institution)
 
 ---
 
-### publication
+## Table: laboratoire
 
-| Attribut         | Type      | Description                    |
-| ---------------- | --------- | ------------------------------ |
-| id               | BIGSERIAL | Identifiant unique             |
-| titre            | TEXT      | Titre de la publication        |
-| doi              | TEXT      | Identifiant DOI, unique        |
-| date_publication | DATE      | Date de publication            |
-| nb_pages         | INTEGER   | Nombre de pages (>0 ou NULL)   |
-| url_externe      | TEXT      | Lien externe (archive ouverte) |
+**Description** : Laboratoire de recherche rattaché à une institution.
 
----
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique du laboratoire |
+| nom | text | NOT NULL | Nom du laboratoire (ex: LISA, LIRMM) |
+| id_institution | bigint | NOT NULL, FK → institution(id) | Institution de rattachement |
 
-### publication_auteur
-
-| Attribut       | Type    | Description                                 |
-| -------------- | ------- | ------------------------------------------- |
-| id_publication | BIGINT  | FK → publication.id                         |
-| id_chercheur   | BIGINT  | FK → chercheur.id                           |
-| ordre_auteur   | INTEGER | Ordre d’auteur (>0, unique par publication) |
+**Contraintes supplémentaires** :
+- UNIQUE(nom, id_institution)
 
 ---
 
-### jeu_donnees
+## Table: projet
 
-| Attribut         | Type      | Description                                       |
-| ---------------- | --------- | ------------------------------------------------- |
-| id               | BIGSERIAL | Identifiant unique                                |
-| id_contrat       | BIGINT    | FK → contrat.id                                   |
-| description      | TEXT      | Description du jeu de données                     |
-| id_auteur        | BIGINT    | FK → chercheur.id (auteur)                        |
-| conditions_acces | TEXT      | Conditions d’accès                                |
-| licence          | TEXT      | Licence d’utilisation                             |
-| date_depot       | DATE      | Date de dépôt (non NULL uniquement si DMP validé) |
-| url_externe      | TEXT      | Lien externe vers le dépôt                        |
+**Description** : Projet de recherche structurant dirigé par un chercheur unique.
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique du projet |
+| titre | text | NOT NULL | Titre du projet |
+| description | text | | Description détaillée du projet |
+| discipline | text | NOT NULL | Discipline scientifique du projet |
+| budget_annuel_eur | decimal(12,2) | NOT NULL, >= 0 | Budget annuel en euros |
+| date_debut | date | NOT NULL | Date de début du projet |
+| date_fin | date | >= date_debut ou NULL | Date de fin du projet |
+| id_laboratoire_pilote | bigint | NOT NULL, FK → laboratoire(id) | Laboratoire porteur du projet |
+| id_chercheur_responsable | bigint | FK → chercheur(id) | Chercheur responsable du projet |
+
+**Règle métier** : Le responsable du projet doit appartenir au laboratoire pilote (vérifié par trigger).
+
+---
+
+## Table: chercheur
+
+**Description** : Chercheur affilié à un laboratoire.
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique du chercheur |
+| prenom | text | NOT NULL | Prénom du chercheur |
+| nom | text | NOT NULL | Nom du chercheur |
+| email | text | NOT NULL, UNIQUE | Adresse email professionnelle |
+| orcid | varchar(19) | UNIQUE | Identifiant ORCID (format: 0000-0000-0000-0000) |
+| discipline | text | | Discipline de recherche principale |
+| id_laboratoire | bigint | NOT NULL, FK → laboratoire(id) | Laboratoire de rattachement |
+
+---
+
+## Table: projet_chercheur
+
+**Description** : Table associative gérant la relation N-N entre projets et chercheurs.
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique de l'association |
+| id_projet | bigint | NOT NULL, FK → projet(id) | Identifiant du projet |
+| id_chercheur | bigint | NOT NULL, FK → chercheur(id) | Identifiant du chercheur |
+| role | text | | Rôle du chercheur dans le projet |
+| date_debut | date | | Date de début de participation |
+| date_fin | date | | Date de fin de participation |
+| charge_pct | decimal(5,2) | 0-100 | Pourcentage d'effort alloué au projet |
+| is_principal | boolean | DEFAULT false | Indique si c'est un chercheur principal |
+
+**Contraintes supplémentaires** :
+- UNIQUE(id_projet, id_chercheur)
+
+---
+
+## Table: contrat
+
+**Description** : Contrat de financement d'un projet de recherche.
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique du contrat |
+| type_contrat | type_contrat | NOT NULL | Type de contrat (enum) |
+| financeur | text | NOT NULL | Organisme financeur |
+| intitule | text | NOT NULL | Intitulé du contrat |
+| montant_eur | decimal(14,2) | NOT NULL, >= 0 | Montant total en euros |
+| duree_mois | int | > 0 ou NULL | Durée en mois |
+| date_debut | date | NOT NULL | Date de début du contrat |
+| date_fin | date | NOT NULL, >= date_debut | Date de fin du contrat |
+| id_projet | bigint | NOT NULL, FK → projet(id) | Projet financé |
+| statut_dmp | statut_dmp | NOT NULL, DEFAULT 'brouillon' | Statut du Data Management Plan |
+| date_validation_dmp | date | | Date de validation du DMP |
+| url_document_dmp | text | | URL du document DMP |
+
+**Règle métier** : Si statut_dmp = 'valide', alors date_validation_dmp et url_document_dmp doivent être renseignés.
+
+---
+
+## Table: publication
+
+**Description** : Publication scientifique (métadonnées uniquement, fichiers stockés hors base).
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique de la publication |
+| titre | text | NOT NULL | Titre de la publication |
+| doi | text | UNIQUE | Digital Object Identifier |
+| date_publication | date | | Date de publication |
+| nb_pages | int | > 0 ou NULL | Nombre de pages |
+| url_externe | text | | URL vers le document (ex: HAL) |
+
+---
+
+## Table: publication_auteur
+
+**Description** : Table associative entre publications et chercheurs (relation N-N).
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id_publication | bigint | NOT NULL, FK → publication(id) | Identifiant de la publication |
+| id_chercheur | bigint | NOT NULL, FK → chercheur(id) | Identifiant du chercheur |
+| ordre_auteur | int | NOT NULL, DEFAULT 1, > 0 | Ordre d'apparition dans la liste des auteurs |
+
+**Contraintes supplémentaires** :
+- PK(id_publication, id_chercheur)
+- UNIQUE(id_publication, ordre_auteur) : un seul auteur par position
+
+---
+
+## Table: jeu_donnees
+
+**Description** : Jeu de données produit dans le cadre d'un contrat (métadonnées uniquement).
+
+| Attribut | Type | Contraintes | Description |
+|----------|------|-------------|-------------|
+| id | bigint | PK, auto-increment | Identifiant unique du jeu de données |
+| id_contrat | bigint | NOT NULL, FK → contrat(id) | Contrat associé |
+| description | text | NOT NULL | Description du jeu de données |
+| id_auteur | bigint | NOT NULL, FK → chercheur(id) | Chercheur auteur du dataset |
+| conditions_acces | text | | Conditions d'accès aux données |
+| licence | text | | Licence d'utilisation |
+| date_depot | date | | Date de dépôt officiel |
+| url_externe | text | | URL vers l'entrepôt de données |
+
+**Règle métier** : Le dépôt (date_depot non NULL) n'est autorisé que si le DMP du contrat est validé (vérifié par trigger).
