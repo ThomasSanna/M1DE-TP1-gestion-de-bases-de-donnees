@@ -127,8 +127,10 @@ CREATE TABLE IF NOT EXISTS jeu_donnees (
     id_auteur           BIGINT NOT NULL REFERENCES chercheur(id) ON UPDATE RESTRICT ON DELETE RESTRICT,
     conditions_acces    TEXT,
     licence             TEXT,
+    date_creation       DATE, -- Date de création du jeu de données (métadonnées)
     date_depot          DATE, -- Règle: ne peut être non NULL que si le DMP du contrat est validé
-    url_externe         TEXT
+    url_externe         TEXT,
+    CONSTRAINT chk_dates_jeu_donnees CHECK (date_depot IS NULL OR date_creation IS NULL OR date_depot >= date_creation)
 );
 
 -- Index utiles

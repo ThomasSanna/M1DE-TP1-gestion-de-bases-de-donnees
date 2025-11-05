@@ -241,6 +241,7 @@ CREATE TABLE IF NOT EXISTS jeu_donnees_archive (
     id                      BIGINT PRIMARY KEY,
     description             TEXT NOT NULL,
     licence                 TEXT,
+    date_creation           DATE,
     date_depot              DATE,
     conditions_acces        TEXT,
     url_externe             TEXT,
@@ -473,11 +474,11 @@ BEGIN
     
     -- 2. Archiver les jeux de données associés aux contrats archivés
     INSERT INTO jeu_donnees_archive (
-        id, description, licence, date_depot, conditions_acces, 
+        id, description, licence, date_creation, date_depot, conditions_acces, 
         url_externe, id_contrat, id_auteur, date_archivage
     )
     SELECT 
-        jd.id, jd.description, jd.licence, jd.date_depot, jd.conditions_acces,
+        jd.id, jd.description, jd.licence, jd.date_creation, jd.date_depot, jd.conditions_acces,
         jd.url_externe, jd.id_contrat, jd.id_auteur, CURRENT_TIMESTAMP
     FROM jeu_donnees jd
     WHERE jd.id_contrat IN (SELECT id FROM contrat_archive)

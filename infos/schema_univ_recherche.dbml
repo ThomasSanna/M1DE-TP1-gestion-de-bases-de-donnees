@@ -134,7 +134,8 @@ Table jeu_donnees {
   id_auteur         bigint [not null]
   conditions_acces  text
   licence           text
-  date_depot        date   [note: 'Autorisé uniquement si le DMP du contrat est validé']
+  date_creation     date   [note: 'Date de création du jeu de données (métadonnées)']
+  date_depot        date   [note: 'Autorisé uniquement si le DMP du contrat est validé; doit être >= date_creation']
   url_externe       text
 
   Note: 'Métadonnées de datasets; dépôt officiel soumis à la validation du DMP.'

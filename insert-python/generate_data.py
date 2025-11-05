@@ -188,9 +188,11 @@ def generate_jeux_donnees(f, fake: Faker, contrats: List[int], contrats_valides:
         # Choisir un contrat (validé si on veut une date_depot)
         if contrats_valides and random.random() < 0.4:
             id_contrat = random.choice(contrats_valides)
-            date_depot = fake.date_between(start_date='-2y', end_date='today')
+            date_creation = fake.date_between(start_date='-3y', end_date='today')
+            date_depot = fake.date_between(start_date=date_creation, end_date='today')
         else:
             id_contrat = random.choice(contrats)
+            date_creation = fake.date_between(start_date='-3y', end_date='today')
             date_depot = None
         description = fake.sentence(nb_words=12)
         id_auteur = random.choice(chercheurs)
@@ -198,7 +200,7 @@ def generate_jeux_donnees(f, fake: Faker, contrats: List[int], contrats_valides:
         licence = random.choice(["CC-BY", "CC0", "ODbL", None])
         url = fake.url() if random.random() < 0.5 else None
         jeux.append(jid)
-        f.write(f"INSERT INTO univ_recherche.jeu_donnees (id, id_contrat, description, id_auteur, conditions_acces, licence, date_depot, url_externe) VALUES ({jid}, {id_contrat}, {_quote_sql(description)}, {id_auteur}, {_quote_sql(conditions)}, {_quote_sql(licence)}, {_quote_sql(date_depot)}, {_quote_sql(url)});\n")
+        f.write(f"INSERT INTO univ_recherche.jeu_donnees (id, id_contrat, description, id_auteur, conditions_acces, licence, date_creation, date_depot, url_externe) VALUES ({jid}, {id_contrat}, {_quote_sql(description)}, {id_auteur}, {_quote_sql(conditions)}, {_quote_sql(licence)}, {_quote_sql(date_creation)}, {_quote_sql(date_depot)}, {_quote_sql(url)});\n")
     
     f.write("SELECT setval(pg_get_serial_sequence('univ_recherche.jeu_donnees','id'), COALESCE((SELECT MAX(id) FROM univ_recherche.jeu_donnees),0));\n")
     return jeux
