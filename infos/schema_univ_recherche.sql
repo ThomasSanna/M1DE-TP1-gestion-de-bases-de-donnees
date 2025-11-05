@@ -108,8 +108,6 @@ CREATE TABLE IF NOT EXISTS publication (
     date_publication    DATE,
     nb_pages            INTEGER CHECK (nb_pages IS NULL OR nb_pages > 0),
     url_externe         TEXT
-    -- Optionnel: rattacher à un projet si souhaité
-    --, id_projet       BIGINT REFERENCES projet(id) ON UPDATE RESTRICT ON DELETE SET NULL
 );
 
 -- Auteurs de publication (N-N)
