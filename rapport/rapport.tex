@@ -34,18 +34,19 @@
 \lstdefinestyle{sqlstyle}{
     language=SQL,
     basicstyle=\ttfamily\footnotesize,
-    keywordstyle=\color{blue}\bfseries,
-    commentstyle=\color{green!60!black}\itshape,
-    stringstyle=\color{red},
+    keywordstyle=\color{blue!70}\bfseries,
+    commentstyle=\color{green!50!black}\itshape,
+    stringstyle=\color{red!70},
     numbers=left,
-    numberstyle=\tiny\color{gray},
+    numberstyle=\tiny\color{gray!60},
     stepnumber=1,
     numbersep=8pt,
-    backgroundcolor=\color{gray!10},
+    backgroundcolor=\color{blue!5},
     showspaces=false,
     showstringspaces=false,
     showtabs=false,
     frame=single,
+    rulecolor=\color{blue!20},
     tabsize=2,
     captionpos=b,
     breaklines=true,
@@ -55,18 +56,19 @@
 \lstdefinestyle{pythonstyle}{
     language=Python,
     basicstyle=\ttfamily\footnotesize,
-    keywordstyle=\color{blue}\bfseries,
-    commentstyle=\color{green!60!black}\itshape,
-    stringstyle=\color{orange},
+    keywordstyle=\color{purple!60}\bfseries,
+    commentstyle=\color{teal!50!black}\itshape,
+    stringstyle=\color{orange!70},
     numbers=left,
-    numberstyle=\tiny\color{gray},
+    numberstyle=\tiny\color{gray!60},
     stepnumber=1,
     numbersep=8pt,
-    backgroundcolor=\color{gray!10},
+    backgroundcolor=\color{purple!5},
     showspaces=false,
     showstringspaces=false,
     showtabs=false,
     frame=single,
+    rulecolor=\color{purple!20},
     tabsize=4,
     captionpos=b,
     breaklines=true,
@@ -100,7 +102,7 @@
     
     \vspace{2cm}
     
-    {\large Master 1 Data Engineering (M1 DENG)\par}
+    {\large Master 1 Data Engineer (M1 DENG)\par}
     
     \vspace{1cm}
     
@@ -110,9 +112,9 @@
     
     {\large Réalisé par :\par}
     {\Large 
-    Nom Prénom 1\\
-    Nom Prénom 2\\
-    Nom Prénom 3\par}
+    SANNA Thomas\\
+    FURFARO Thomas\\
+    CHENE Arlette\par}
     
     \vfill
     
@@ -861,7 +863,7 @@ projets\_budget\_global & - & - & ALL \\ \bottomrule
 \label{tab:privileges}
 \end{table}
 
-\subsubsection{Exemples de scripts SQL}
+\subsubsection{Scripts SQL}
 \begin{lstlisting}[style=sqlstyle, caption=Création des rôles et attribution des privilèges]
 -- Role Chercheur
 CREATE ROLE role_chercheur;
@@ -875,17 +877,20 @@ CREATE ROLE role_administrateur;
 -- Creation des vues, etc. (voir sections precedentes)
 
 -- Privileges pour ADMINISTRATEUR
+GRANT USAGE ON SCHEMA univ_recherche TO role_administrateur;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA univ_recherche TO role_administrateur;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA univ_recherche TO role_administrateur;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA univ_recherche TO role_administrateur;
 
 -- Privileges pour DATA_MANAGER
+GRANT USAGE ON SCHEMA univ_recherche TO role_data_manager;
 GRANT SELECT ON ALL TABLES IN SCHEMA univ_recherche TO role_data_manager;
 GRANT INSERT, UPDATE, DELETE ON contrat, jeu_donnees TO role_data_manager;
 GRANT SELECT ON v_metadonnees_contrats, v_synthese_donnees_projet, v_tableau_bord_projets TO role_data_manager;
 GRANT SELECT ON v_publications_chercheur TO role_data_manager;
 
 -- Privileges pour CHERCHEUR
+GRANT USAGE ON SCHEMA univ_recherche TO role_chercheur;
 GRANT SELECT ON projet, chercheur, laboratoire, institution, publication TO role_chercheur;
 GRANT SELECT ON v_mes_projets, v_mes_donnees, v_publications_chercheur TO role_chercheur;
 GRANT INSERT ON publication, publication_auteur, jeu_donnees TO role_chercheur;
@@ -893,6 +898,26 @@ GRANT UPDATE ON jeu_donnees TO role_chercheur;
 
 \end{lstlisting}
 
+\subsubsection{Test de la vue v\_mes\_projets avec un chercheur}
+Nous avons ici créé un utilisateur avec l'email d'un chercheur existant dans la base de données, ayant un total de 6 projets associés.
+\begin{lstlisting}[style=sqlstyle, caption=Test des privilèges avec un utilisateur Chercheur]
+-- Creation d'un utilisateur avec l'email d'un chercheur existant ("alexandrie.parent@dos.org")
+CREATE USER "alexandrie.parent@dos.org" WITH PASSWORD 'motdepasse';
+GRANT role_chercheur TO "alexandrie.parent@dos.org";
+-- Connexion
+\c - "alexandrie.parent@dos.org"
+-- Test d'acces a la vue mes_projets
+SELECT * FROM v_mes_projets;
+\end{lstlisting}
+
+On obtient bien uniquement les 6 projets liés à ce chercheur.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imgs/testchercheur1.png}
+    \caption{Résultat de la vue v\_mes\_projets pour l'utilisateur \\"alexandrie.parent@dos.org".}
+    \label{fig:testchercheur1}
+\end{figure}
 \newpage
 
 % Partie 4
@@ -1284,12 +1309,69 @@ Une baisse plus grande sur la Version 1, qui reste donc notre choix final pour c
 Vérifier lors de l'insertion d'une participation qu'on ne dépasse pas la capacité maximale du projet.
 
 \paragraph{Implémentation}
+
+Nous avons tout d'abord ajouté la colonne \texttt{capacite\_max\_participants} à la table \texttt{projet} :
+\begin{lstlisting}[style=sqlstyle, caption=Ajout de la colonne capacité maximale participants]
+    ALTER TABLE projet ADD COLUMN capacite_max_participants INTEGER CHECK (capacite_max_participants > 0);
+\end{lstlisting}
+
+Pour ensuite créer le trigger :
+
 \begin{lstlisting}[style=sqlstyle, caption=Trigger limite participants]
--- Code SQL du trigger
+CREATE OR REPLACE FUNCTION verifier_capacite_participants()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_capacite_max INTEGER;
+    v_nb_participants_actuel INTEGER;
+BEGIN
+    -- On recupere ici la capacite maximale du projet
+    SELECT capacite_max_participants INTO v_capacite_max
+    FROM projet WHERE id = NEW.id_projet;
+    
+    -- Si aucune limite n'est definie, accepter l'insertion
+    IF v_capacite_max IS NULL THEN
+        RETURN NEW;
+    END IF;
+    
+    -- Compter le nombre actuel de participants (en excluant celui qu'on ajoute si UPDATE)
+    IF TG_OP = 'INSERT' THEN
+        SELECT COUNT(*) INTO v_nb_participants_actuel
+        FROM projet_chercheur
+        WHERE id_projet = NEW.id_projet;
+    ELSE
+        SELECT COUNT(*) INTO v_nb_participants_actuel
+        FROM projet_chercheur
+        WHERE id_projet = NEW.id_projet AND id <> NEW.id;
+    END IF;
+    
+    -- Verifier si la capacite est depassee
+    IF v_nb_participants_actuel >= v_capacite_max THEN
+        RAISE EXCEPTION 'Capacite maximale de participants (%) depassee pour le projet ID %', 
+            v_capacite_max, NEW.id_projet;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Creation du trigger
+CREATE TRIGGER trg_verifier_capacite_participants
+    BEFORE INSERT OR UPDATE ON projet_chercheur
+    FOR EACH ROW EXECUTE FUNCTION verifier_capacite_participants();
+
 \end{lstlisting}
 
 \paragraph{Tests}
-Description des tests effectués et résultats.
+Prenons un projet qui contient déjà 3 participants, et dont la capacité maximale est fixée à 3.
+\begin{lstlisting}[style=sqlstyle, caption=Test du trigger limite participants]
+INSERT INTO univ_recherche.projet_chercheur (id_projet, id_chercheur, role, charge_pct)
+VALUES (1, 5, 'Chercheur associe', 25.00);
+\end{lstlisting}
+On obtient bien l'erreur suivante :
+
+\textit{ERROR:  Capacite maximale de participants (3) depassee pour le projet ID 1}
+
+\textit{CONTEXT:  PL/pgSQL function verifier\_capacite\_participants() line 28 at RAISE }
 
 \subsubsection{Trigger 2 : Vérification DMP d'un jeu de données}
 
@@ -1298,11 +1380,80 @@ Empêcher le passage d'un jeu de données en statut "déposé" si le DMP du cont
 
 \paragraph{Implémentation}
 \begin{lstlisting}[style=sqlstyle, caption=Trigger vérification DMP]
--- Code SQL du trigger
+CREATE OR REPLACE FUNCTION verifier_dmp_avant_depot()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_statut_dmp statut_dmp;
+BEGIN
+    -- Si date_depot est NULL, pas de verification necessaire
+    IF NEW.date_depot IS NULL THEN
+        RETURN NEW;
+    END IF;
+    
+    -- Recuperer le statut DMP du contrat associe
+    SELECT statut_dmp INTO v_statut_dmp
+    FROM contrat WHERE id = NEW.id_contrat;
+    
+    -- Verifier que le DMP est valide
+    IF v_statut_dmp <> 'valide' THEN
+        RAISE EXCEPTION 'Impossible de deposer le jeu de donnees : le DMP du contrat (ID %) n''est pas valide (statut actuel : %)', 
+            NEW.id_contrat, v_statut_dmp;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_verifier_dmp_avant_depot
+    BEFORE INSERT OR UPDATE OF date_depot ON jeu_donnees
+    FOR EACH ROW EXECUTE FUNCTION verifier_dmp_avant_depot();
 \end{lstlisting}
 
 \paragraph{Tests}
-Scénarios de test et résultats.
+Essayons ici plusieurs cas :
+
+\begin{lstlisting}[style=sqlstyle, caption=Test réussi du trigger vérification DMP]
+INSERT INTO univ_recherche.jeu_donnees (
+    id_contrat, 
+    description, 
+    id_auteur, 
+    licence, 
+    date_creation
+) VALUES (
+    (SELECT id FROM univ_recherche.contrat WHERE statut_dmp = 'brouillon' LIMIT 1),
+    'Dataset test', -- pas important pour le test
+    582, -- pas important pour le test
+    'CC-BY', -- pas important pour le test
+    CURRENT_DATE -- pas important pour le test
+    -- date_depot est null
+);
+\end{lstlisting}
+Ici, l'insertion réussit car la date\_depot est NULL.
+
+Cependant, si l'on essaie de déposer un jeu de données avec un DMP soumis ou brouillon, mais avec un date\_depot non NULL :
+
+\begin{lstlisting}[style=sqlstyle, caption=Test échoué du trigger vérification DMP]
+INSERT INTO univ_recherche.jeu_donnees (
+    id_contrat, 
+    description, 
+    id_auteur, 
+    licence, 
+    date_creation,
+    date_depot
+) VALUES (
+    (SELECT id FROM univ_recherche.contrat WHERE statut_dmp = 'brouillon' LIMIT 1),
+    'Dataset test',
+    582,
+    'CC-BY',
+    "2024-05-20",
+    CURRENT_DATE -- date_depot non NULL
+);
+\end{lstlisting}
+On obtient bien l'erreur suivante :
+
+\textit{ERREUR: Impossible de déposer le jeu de données : le DMP du contrat (ID 2) n'est pas validé (statut actuel : brouillon)}
+
+\textit{CONTEXT:  PL/pgSQL function verifier\_dmp\_avant\_depot() line 16 at RAISE }
 
 \subsection{Procédures stockées et fonctions}
 
@@ -1316,18 +1467,42 @@ Calculer le nombre de publications pour un projet donné et une année donnée.
 CREATE FUNCTION nb_publications_projet(
     p_id_projet BIGINT,
     p_annee INTEGER
-) RETURNS INTEGER
+) RETURNS INTEGER AS $$
 \end{lstlisting}
 
 \paragraph{Implémentation}
 \begin{lstlisting}[style=sqlstyle, caption=Fonction nb\_publications\_projet]
--- Code SQL complet
+DECLARE
+    v_nb_publications INTEGER;
+BEGIN
+    -- Compter les publications des chercheurs du projet pour l'annee donnee
+    SELECT COUNT(DISTINCT pub.id) INTO v_nb_publications
+    FROM projet_chercheur pc
+    JOIN publication_auteur pa ON pc.id_chercheur = pa.id_chercheur
+    JOIN publication pub ON pa.id_publication = pub.id
+    WHERE pc.id_projet = p_id_projet
+      AND EXTRACT(YEAR FROM pub.date_publication) = p_annee;
+    
+    RETURN COALESCE(v_nb_publications, 0);
+END;
+$$ LANGUAGE plpgsql;
 \end{lstlisting}
 
 \paragraph{Tests}
 \begin{lstlisting}[style=sqlstyle, caption=Tests de la fonction]
--- Scripts de test
+DO $$
+DECLARE
+    v_resultat INTEGER;
+BEGIN
+    v_resultat := nb_publications_projet(4, 2024);
+    RAISE NOTICE 'Nombre de publications en 2024 du projet 4: %', v_resultat;
+END;
+$$;
 \end{lstlisting}
+
+On obtient bien le résultat attendu :
+
+\texttt{NOTICE:  Nombre de publications en 2024 du projet 4: 3}
 
 \subsubsection{Procédure 2 : Préparation du bilan d'un projet}
 
@@ -1335,17 +1510,74 @@ CREATE FUNCTION nb_publications_projet(
 Mettre à jour une table de bilan avec le nombre de publications et jeux de données par projet pour une année donnée.
 
 \paragraph{Table de bilan}
+Notons que la table de bilan doit être créée au préalable.
 \begin{lstlisting}[style=sqlstyle, caption=Table bilan\_projet]
--- Structure de la table
+CREATE TABLE IF NOT EXISTS bilan_projet (
+    id_projet               BIGINT NOT NULL REFERENCES projet(id) ON DELETE CASCADE,
+    annee                   INTEGER NOT NULL,
+    nb_publications         INTEGER DEFAULT 0,
+    nb_datasets_deposes     INTEGER DEFAULT 0,
+    date_maj                TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id_projet, annee)
+);
 \end{lstlisting}
 
 \paragraph{Implémentation}
 \begin{lstlisting}[style=sqlstyle, caption=Procédure preparation\_bilan]
--- Code SQL complet
+CREATE OR REPLACE PROCEDURE preparer_bilan_projets(
+    p_annee INTEGER          -- Annee passee en parametre pour laquelle preparer le bilan
+) AS $$
+DECLARE
+    v_projet RECORD;
+    v_nb_publications INTEGER;
+    v_nb_datasets INTEGER;
+BEGIN
+    -- Parcourir tous les projets
+    FOR v_projet IN SELECT id FROM projet LOOP
+        
+        -- Calculer le nombre de publications pour l'annee
+        SELECT COUNT(DISTINCT pub.id) INTO v_nb_publications
+        FROM projet_chercheur pc
+        JOIN publication_auteur pa ON pc.id_chercheur = pa.id_chercheur
+        JOIN publication pub ON pa.id_publication = pub.id
+        WHERE pc.id_projet = v_projet.id
+          AND EXTRACT(YEAR FROM pub.date_publication) = p_annee;
+        
+        -- Calculer le nombre de datasets deposes pour l'annee
+        SELECT COUNT(DISTINCT jd.id) INTO v_nb_datasets
+        FROM contrat ct
+        JOIN jeu_donnees jd ON ct.id = jd.id_contrat
+        WHERE ct.id_projet = v_projet.id
+          AND EXTRACT(YEAR FROM jd.date_depot) = p_annee
+          AND jd.date_depot IS NOT NULL;
+        
+        -- Inserer ou mettre a jour le bilan
+        INSERT INTO bilan_projet (id_projet, annee, nb_publications, nb_datasets_deposes, date_maj)
+        VALUES (v_projet.id, p_annee, COALESCE(v_nb_publications, 0), COALESCE(v_nb_datasets, 0), CURRENT_TIMESTAMP)
+        ON CONFLICT (id_projet, annee)  -- en cas de conflits (projet deja present pour cette annee), nous mettons simplement a jour les valeurs
+        DO UPDATE SET 
+            nb_publications = COALESCE(v_nb_publications, 0),
+            nb_datasets_deposes = COALESCE(v_nb_datasets, 0),
+            date_maj = CURRENT_TIMESTAMP;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
 \end{lstlisting}
 
 \paragraph{Tests}
-Scripts de test et résultats.
+Après avoir appelé la procédure pour l'année 2024 sur une base de données assez fournie :
+\begin{lstlisting}[style=sqlstyle, caption=Test de la procédure]
+CALL preparer_bilan_projets(2024);
+\end{lstlisting}
+
+Nous obtenons bien les entrées attendues dans la table \texttt{bilan\_projet}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imgs/test_bilan_projet.png}
+    \caption{Résultat de la table bilan\_projet après appel de la procédure pour l'année 2024.}
+    \label{fig:test_bilan_projet}
+\end{figure}
 
 \subsubsection{Fonction 3 : Fiche projet}
 
@@ -1357,11 +1589,63 @@ Description de la structure retournée (TABLE, SETOF, JSON, etc.).
 
 \paragraph{Implémentation}
 \begin{lstlisting}[style=sqlstyle, caption=Fonction fiche\_projet]
--- Code SQL complet
+CREATE OR REPLACE FUNCTION fiche_projet(
+    p_id_projet BIGINT       -- ID du projet concerne
+) RETURNS TABLE (
+    type_element TEXT,
+    annee INTEGER,
+    titre_ou_description TEXT,
+    doi_ou_statut TEXT,
+    url TEXT
+) AS $$
+BEGIN
+    -- Retourner les publications associees au projet
+    RETURN QUERY
+    SELECT 
+        'Publication'::TEXT AS type_element,
+        EXTRACT(YEAR FROM pub.date_publication)::INTEGER AS annee,
+        pub.titre AS titre_ou_description,
+        COALESCE(pub.doi, 'N/A') AS doi_ou_statut,
+        pub.url_externe AS url
+    FROM projet_chercheur pc
+    JOIN publication_auteur pa ON pc.id_chercheur = pa.id_chercheur
+    JOIN publication pub ON pa.id_publication = pub.id
+    WHERE pc.id_projet = p_id_projet
+    
+    UNION ALL
+    
+    -- Retourner les jeux de donnees associees au projet
+    SELECT 
+        'Dataset'::TEXT AS type_element,
+        EXTRACT(YEAR FROM jd.date_depot)::INTEGER AS annee,
+        jd.description AS titre_ou_description,
+        CASE 
+            WHEN jd.date_depot IS NOT NULL THEN 'Depose'
+            ELSE 'Non depose'
+        END AS doi_ou_statut,
+        jd.url_externe AS url
+    FROM contrat ct
+    JOIN jeu_donnees jd ON ct.id = jd.id_contrat
+    WHERE ct.id_projet = p_id_projet
+    
+    ORDER BY type_element, annee DESC NULLS LAST;
+END;
+$$ LANGUAGE plpgsql;
 \end{lstlisting}
 
 \paragraph{Tests}
-Exemples d'utilisation et résultats.
+\begin{lstlisting}[style=sqlstyle, caption=Test de la fonction fiche\_projet]
+SELECT * FROM fiche_projet(4);
+\end{lstlisting}
+
+On obtient le résultat attendu avec la liste des publications et jeux de données associés au projet 4.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imgs/test_fiche_projet.png}
+    \caption{Résultat de la fonction fiche\_projet pour le projet ID 4.}
+    \label{fig:test_fiche_projet}
+\end{figure}
 
 \subsubsection{Procédure 4 : Archivage des contrats échus}
 
@@ -1369,52 +1653,110 @@ Exemples d'utilisation et résultats.
 Déplacer les contrats dont la date de fin est antérieure à une date seuil dans une table d'archives.
 
 \paragraph{Table d'archives}
+Nous avons créé une table \texttt{contrat\_archive} pour stocker les contrats archivés. Une table \texttt{jeu\_donnee\_archive} a été créé en conséquence pour les jeux de données associés, ce qui évite les problèmes de contraintes de clés étrangères.
 \begin{lstlisting}[style=sqlstyle, caption=Table contrat\_archive]
--- Structure de la table
+CREATE TABLE IF NOT EXISTS contrat_archive (
+    id                      BIGINT PRIMARY KEY,
+    type_contrat            type_contrat NOT NULL,
+    financeur               TEXT NOT NULL,
+    intitule                TEXT NOT NULL,
+    montant_eur             NUMERIC(14,2) NOT NULL,
+    duree_mois              INTEGER,
+    date_debut              DATE NOT NULL,
+    date_fin                DATE NOT NULL,
+    id_projet               BIGINT NOT NULL,
+    statut_dmp              statut_dmp NOT NULL,
+    date_validation_dmp     DATE,
+    url_document_dmp        TEXT,
+    date_archivage          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{lstlisting}
+
+\begin{lstlisting}[style=sqlstyle, caption=Table jeu\_donnee\_archive]
+CREATE TABLE IF NOT EXISTS jeu_donnees_archive (
+    id                      BIGINT PRIMARY KEY,
+    description             TEXT NOT NULL,
+    licence                 TEXT,
+    date_creation           DATE,
+    date_depot              DATE,
+    conditions_acces        TEXT,
+    url_externe             TEXT,
+    id_contrat              BIGINT NOT NULL REFERENCES contrat_archive(id) ON DELETE CASCADE,
+    id_auteur               BIGINT NOT NULL,
+    date_archivage          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 \end{lstlisting}
 
 \paragraph{Implémentation}
+
 \begin{lstlisting}[style=sqlstyle, caption=Procédure archivage\_contrats]
--- Code SQL complet
+CREATE OR REPLACE PROCEDURE archiver_contrats_echus(
+    p_date_seuil DATE  -- Date seuil : les contrats termines avant cette date seront archives
+) AS $$
+DECLARE
+    v_nb_archives_contrats INTEGER;
+    v_nb_archives_jeux_donnees INTEGER;
+BEGIN
+    -- 1. Archiver les contrats echus EN PREMIER (car jeu_donnees_archive reference contrat_archive)
+    INSERT INTO contrat_archive (
+        id, type_contrat, financeur, intitule, montant_eur, duree_mois,
+        date_debut, date_fin, id_projet, statut_dmp, date_validation_dmp, 
+        url_document_dmp, date_archivage
+    )
+    SELECT 
+        id, type_contrat, financeur, intitule, montant_eur, duree_mois,
+        date_debut, date_fin, id_projet, statut_dmp, date_validation_dmp, 
+        url_document_dmp, CURRENT_TIMESTAMP
+    FROM contrat
+    WHERE date_fin < p_date_seuil
+      AND id NOT IN (SELECT id FROM contrat_archive);
+    
+    GET DIAGNOSTICS v_nb_archives_contrats = ROW_COUNT;
+    
+    -- 2. Archiver les jeux de donnees associes aux contrats archives
+    INSERT INTO jeu_donnees_archive (
+        id, description, licence, date_creation, date_depot, conditions_acces, 
+        url_externe, id_contrat, id_auteur, date_archivage
+    )
+    SELECT 
+        jd.id, jd.description, jd.licence, jd.date_creation, jd.date_depot, jd.conditions_acces,
+        jd.url_externe, jd.id_contrat, jd.id_auteur, CURRENT_TIMESTAMP
+    FROM jeu_donnees jd
+    WHERE jd.id_contrat IN (SELECT id FROM contrat_archive)
+      AND jd.id NOT IN (SELECT id FROM jeu_donnees_archive);
+    
+    GET DIAGNOSTICS v_nb_archives_jeux_donnees = ROW_COUNT;
+    
+    -- 3. Supprimer les jeux de donnees archives de la table principale
+    DELETE FROM jeu_donnees
+    WHERE id IN (SELECT id FROM jeu_donnees_archive);
+    
+    -- 4. Supprimer les contrats archives de la table principale
+    DELETE FROM contrat
+    WHERE date_fin < p_date_seuil
+      AND id IN (SELECT id FROM contrat_archive);
+    
+    RAISE NOTICE '% contrat(s) et % jeu(x) de donnees archive(s) avec succes', 
+        v_nb_archives_contrats, v_nb_archives_jeux_donnees;
+END;
+$$ LANGUAGE plpgsql;
 \end{lstlisting}
 
 \paragraph{Tests}
-Scripts de test avec différentes dates seuil.
+Après avoir appelé la procédure pour archiver les contrats échus avant le 1er janvier 2023 :
+\begin{lstlisting}[style=sqlstyle, caption=Test de la procédure archivage\_contrats]
+CALL archiver_contrats_echus('2023-01-01');
+\end{lstlisting}
+On obtient le message de confirmation indiquant le nombre de contrats et jeux de données archivés.
 
-\subsection{Documentation du code}
+\texttt{NOTICE:  241 contrat(s) et 135 jeu(x) de données archivé(s) avec succès}
 
-\subsubsection{Conventions de nommage}
-Description des conventions adoptées pour les variables, paramètres, etc.
-
-\subsubsection{Commentaires}
-Exemples de commentaires dans le code PL/pgSQL.
-
-\newpage
-
-% Conclusion
-\section{Conclusion}
-
-\subsection{Synthèse du travail réalisé}
-Récapitulatif des différentes parties et des résultats obtenus.
-
-\subsection{Apports pédagogiques}
-
-\subsubsection{Compétences techniques acquises}
-\begin{itemize}
-    \item Conception de schéma relationnel complexe
-    \item Maîtrise de PostgreSQL et PL/pgSQL
-    \item Techniques d'optimisation de requêtes
-    \item Gestion de la sécurité et des accès
-\end{itemize}
-
-\subsubsection{Utilisation de l'IA générative}
-Retour critique sur l'utilisation des outils d'IA dans le processus de développement.
-
-\subsection{Difficultés rencontrées}
-Liste des principaux défis et solutions apportées.
-
-\subsection{Perspectives d'amélioration}
-Pistes d'amélioration pour la base de données et le processus de développement.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{imgs/testarchive.png}
+    \caption{Résultat des tables contrat\_archive et jeu\_donnees\_archive après appel de la procédure d'archivage.}
+    \label{fig:test_archivage_contrats}
+\end{figure}
 
 \newpage
 
@@ -1443,14 +1785,6 @@ Référence au fichier \texttt{schema\_avance.sql} Partie 5.
 \subsection{Script de génération de données}
 \label{sec:code-python}
     Référence au fichier \texttt{generate\_data.py}.
-
-\section{Captures d'écran}
-
-\subsection{Plans d'exécution}
-Captures d'écran des plans EXPLAIN ANALYZE pour les requêtes optimisées.
-
-\subsection{Tests des procédures}
-Captures d'écran des résultats des tests.
 
 \section{Dictionnaire de données}
 Référence au fichier \texttt{dictionnaire\_attributs.md}.
