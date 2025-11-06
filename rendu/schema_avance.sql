@@ -185,7 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_projet_chercheur_projet ON projet_chercheur(id_pr
 CREATE INDEX IF NOT EXISTS idx_projet_chercheur_chercheur ON projet_chercheur(id_chercheur);
 
 -- Index pour R2 : Publications par chercheur et laboratoire
-CREATE INDEX IF NOT EXISTS idx_publication_date_publication ON publication(date_publication);
+CREATE INDEX IF NOT EXISTS idx_publication_date ON publication(date_publication);
 CREATE INDEX IF NOT EXISTS idx_publication_auteur_chercheur ON publication_auteur(id_chercheur);
 CREATE INDEX IF NOT EXISTS idx_publication_auteur_publication ON publication_auteur(id_publication);
 CREATE INDEX IF NOT EXISTS idx_chercheur_laboratoire ON chercheur(id_laboratoire);

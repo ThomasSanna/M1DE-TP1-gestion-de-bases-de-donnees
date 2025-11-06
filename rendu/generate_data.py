@@ -278,5 +278,5 @@ def main(rows: int) -> None:
     print(f"inserts_postgres.sql créé: {INSERTS_PG}")
 
 if __name__ == "__main__":
-    nb_rows = 100
+    nb_rows = 50000
     main(nb_rows)

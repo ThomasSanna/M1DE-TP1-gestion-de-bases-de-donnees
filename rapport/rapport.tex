@@ -914,101 +914,362 @@ GRANT UPDATE ON jeu_donnees TO role_chercheur;
 \subsubsection{Énoncé}
 Nombre total de jeux de données déposés par projet et par année civile, ainsi que la moyenne du délai de dépôt (en jours) pour les projets ayant impliqué > 5 chercheurs depuis 2018.
 
-\subsubsection{Version 1}
+\subsubsection{Version 1 : Utilisation d'une sous-requête avec WITH}
 \begin{lstlisting}[style=sqlstyle, caption=R1 - Version 1]
--- Code SQL Version 1
+    WITH projets_eligibles AS (
+        SELECT p.id AS id_projet
+        FROM projet p
+        JOIN projet_chercheur pc ON p.id = pc.id_projet
+        WHERE p.date_debut >= '2018-01-01'
+        GROUP BY p.id
+        HAVING COUNT(DISTINCT pc.id_chercheur) > 5
+    )
+    SELECT 
+        p.id AS projet_id,
+        p.titre AS projet_titre,
+        EXTRACT(YEAR FROM jd.date_depot) AS annee_civile,
+        COUNT(jd.id) AS nb_jeux_donnees_deposes,
+        ROUND(AVG(jd.date_depot - jd.date_creation), 2) AS delai_moyen_jours
+    FROM projet p
+    JOIN contrat ct ON p.id = ct.id_projet
+    JOIN jeu_donnees jd ON ct.id = jd.id_contrat
+    WHERE p.id IN (SELECT id_projet FROM projets_eligibles)
+    AND jd.date_depot IS NOT NULL
+    GROUP BY p.id, p.titre, EXTRACT(YEAR FROM jd.date_depot)
 \end{lstlisting}
 
-\subsubsection{Version 2}
+\subsubsection{Version 2 : Jointures}
 \begin{lstlisting}[style=sqlstyle, caption=R1 - Version 2]
--- Code SQL Version 2
+    SELECT 
+        p.id AS projet_id,
+        p.titre AS projet_titre,
+        EXTRACT(YEAR FROM jd.date_depot) AS annee_civile,
+        COUNT(DISTINCT jd.id) AS nb_jeux_donnees_deposes,
+        ROUND(AVG(jd.date_depot - jd.date_creation), 2) AS delai_moyen_jours
+    FROM projet p
+    JOIN projet_chercheur pc ON p.id = pc.id_projet
+    JOIN contrat ct ON p.id = ct.id_projet
+    JOIN jeu_donnees jd ON ct.id = jd.id_contrat
+    WHERE p.date_debut >= '2018-01-01'
+    AND jd.date_depot IS NOT NULL
+    GROUP BY p.id, p.titre, EXTRACT(YEAR FROM jd.date_depot)
+    HAVING COUNT(DISTINCT pc.id_chercheur) > 5
 \end{lstlisting}
 
 \subsubsection{Analyse des performances}
+Ces deux versions ont été testées sur un ensemble de données volumineux, et sans index d'optimisation. Les résultats des coûts d'exécution sont les suivants :
 \begin{itemize}
-    \item Temps d'exécution Version 1 : XX ms
-    \item Temps d'exécution Version 2 : XX ms
-    \item Opérations coûteuses identifiées
+    \item Coûts d'exécution Version 1 : 3792.40
+    \item Utilisation de scans séquentiels principalement.
+    \item Coûts d'exécution Version 2 : 3765.40
+    \item Utilisation de scans séquentiels principalement.
 \end{itemize}
+La seconde version est légèrement plus performante, probablement en raison de l'optimisation des jointures par le SGBD.
 
 \subsubsection{Plans d'exécution}
-Captures d'écran et analyse des plans EXPLAIN ANALYZE.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r1v1ni.png}
+    \caption{Plan d'exécution de la Version 1 de la requête R1 sans index d'optimisation.}
+    \label{fig:plan_r1_v1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r1v2ni.png}
+    \caption{Plan d'exécution de la Version 2 de la requête R1 sans index d'optimisation.}
+    \label{fig:plan_r1_v2}
+\end{figure}
+
+Les deux versions utilisent des scans séquentiels sur les tables principales, expliquant probablement les temps d'exécution élevés.
+
+En y ajoutant des index ciblés : 
+
+\begin{lstlisting}[style=sqlstyle, caption=Mise en place des index pour R1]
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_date_depot ON jeu_donnees(date_depot);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_date_creation ON jeu_donnees(date_creation);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_contrat ON jeu_donnees(id_contrat);
+    CREATE INDEX IF NOT EXISTS idx_contrat_projet ON contrat(id_projet);
+
+    CREATE INDEX IF NOT EXISTS idx_projet_chercheur_projet ON projet_chercheur(id_projet);
+    CREATE INDEX IF NOT EXISTS idx_projet_chercheur_chercheur ON projet_chercheur(id_chercheur);
+\end{lstlisting}
+
+Les deux versions ne semblent pas voir de différence significative dans les plans d'exécution. Bien que le temps d'exécution ait été réduit (de 10ms environ chacun), les coûts, eux, restent assez proches :
+\begin{itemize}
+    \item Coûts d'exécution Version 1 avec index : 3788.77 (comparé à 3792.40 sans index)
+    \item Le plan d'exécution reste similaire, avec des scans séquentiels toujours présents.
+    \item Coûts d'exécution Version 2 avec index : 3761.83 (comparé à 3765.40 sans index)
+    \item Le plan d'exécution reste similaire, avec des scans séquentiels toujours présents.
+\end{itemize}
 
 \subsubsection{Optimisation choisie}
-Justification du choix de la version retenue et description des index créés.
-
-\begin{lstlisting}[style=sqlstyle, caption=Index pour R1]
--- Code SQL des index
-\end{lstlisting}
+Après analyse, nous avons choisi la Version 2 de la requête R1 pour son coût légèrement inférieur. Nous avons également mis en place les index listés ci-dessous pour améliorer les performances globales des requêtes similaires.
 
 \subsection{Requête R2 - Projets sans chercheurs peu productifs}
 
 \subsubsection{Énoncé}
-Pour le laboratoire LISA en 2024, donner la liste des projets et le nom du responsable qui n'ont aucun chercheur dont le nombre de publications en 2024 est strictement inférieur à la moyenne.
+Pour le laboratoire "Unleash clicks-and-mortar solutions Lab" en 2024, donner la liste des projets et le nom du responsable qui n'ont aucun chercheur dont le nombre de publications en 2024 est strictement inférieur à la moyenne.
 
-\subsubsection{Version 1}
+\subsubsection{Version 1 : Utilisation de NOT IN}
 \begin{lstlisting}[style=sqlstyle, caption=R2 - Version 1]
--- Code SQL Version 1
+    SELECT 
+        p.id AS projet_id,
+        p.titre AS projet_titre,
+        CONCAT(resp.prenom, ' ', resp.nom) AS responsable
+    FROM projet p
+    JOIN laboratoire l ON p.id_laboratoire_pilote = l.id
+    LEFT JOIN chercheur resp ON p.id_chercheur_responsable = resp.id
+    WHERE l.nom = 'Unleash clicks-and-mortar solutions Lab'
+    AND (p.date_debut <= '2024-12-31' 
+        AND (p.date_fin IS NULL OR p.date_fin >= '2024-01-01'))
+    AND p.id NOT IN (
+        SELECT DISTINCT pc.id_projet
+        FROM projet_chercheur pc
+        JOIN chercheur c ON pc.id_chercheur = c.id
+        JOIN laboratoire l2 ON c.id_laboratoire = l2.id
+        LEFT JOIN publication_auteur pa ON c.id = pa.id_chercheur
+        LEFT JOIN publication pub ON pa.id_publication = pub.id 
+            AND EXTRACT(YEAR FROM pub.date_publication) = 2024
+        WHERE l2.nom = 'Unleash clicks-and-mortar solutions Lab'
+        GROUP BY pc.id_projet, c.id
+        HAVING COUNT(DISTINCT pub.id) < (
+            SELECT AVG(cnt)
+            FROM (
+                SELECT COUNT(DISTINCT pub2.id) AS cnt
+                FROM chercheur c2
+                JOIN laboratoire l3 ON c2.id_laboratoire = l3.id
+                LEFT JOIN publication_auteur pa2 ON c2.id = pa2.id_chercheur
+                LEFT JOIN publication pub2 ON pa2.id_publication = pub2.id 
+                    AND EXTRACT(YEAR FROM pub2.date_publication) = 2024
+                WHERE l3.nom = 'Unleash clicks-and-mortar solutions Lab'
+                GROUP BY c2.id
+            ) AS moyennes
+        )
+    )
 \end{lstlisting}
 
-\subsubsection{Version 2}
+\subsubsection{Version 2 : Utilisation de EXCEPT}
 \begin{lstlisting}[style=sqlstyle, caption=R2 - Version 2]
--- Code SQL Version 2
+    SELECT 
+        p.id AS projet_id,
+        p.titre AS projet_titre,
+        CONCAT(resp.prenom, ' ', resp.nom) AS responsable
+    FROM projet p
+    JOIN laboratoire l ON p.id_laboratoire_pilote = l.id
+    LEFT JOIN chercheur resp ON p.id_chercheur_responsable = resp.id
+    WHERE l.nom = 'Unleash clicks-and-mortar solutions Lab'
+    AND (p.date_debut <= '2024-12-31' 
+        AND (p.date_fin IS NULL OR p.date_fin >= '2024-01-01'))
+
+    EXCEPT
+
+    SELECT DISTINCT
+        p.id AS projet_id,
+        p.titre AS projet_titre,
+        CONCAT(resp.prenom, ' ', resp.nom) AS responsable
+    FROM projet p
+    JOIN laboratoire l ON p.id_laboratoire_pilote = l.id
+    LEFT JOIN chercheur resp ON p.id_chercheur_responsable = resp.id
+    JOIN projet_chercheur pc ON p.id = pc.id_projet
+    JOIN chercheur c ON pc.id_chercheur = c.id
+    LEFT JOIN publication_auteur pa ON c.id = pa.id_chercheur
+    LEFT JOIN publication pub ON pa.id_publication = pub.id 
+        AND EXTRACT(YEAR FROM pub.date_publication) = 2024
+    WHERE l.nom = 'Unleash clicks-and-mortar solutions Lab'
+    AND c.id_laboratoire = l.id
+    GROUP BY p.id, p.titre, resp.prenom, resp.nom, c.id
+    HAVING COUNT(DISTINCT pub.id) < (
+        SELECT AVG(cnt)
+        FROM (
+            SELECT COUNT(DISTINCT pub2.id) AS cnt
+            FROM chercheur c2
+            JOIN laboratoire l2 ON c2.id_laboratoire = l2.id
+            LEFT JOIN publication_auteur pa2 ON c2.id = pa2.id_chercheur
+            LEFT JOIN publication pub2 ON pa2.id_publication = pub2.id 
+                AND EXTRACT(YEAR FROM pub2.date_publication) = 2024
+            WHERE l2.nom = 'Unleash clicks-and-mortar solutions Lab'
+            GROUP BY c2.id
+        ) AS stats_labo
+    )
 \end{lstlisting}
 
 \subsubsection{Analyse des performances}
-Comparaison des deux versions.
+Les deux versions ont été testées sur un ensemble de données volumineux, et sans index d'optimisation. Les résultats des coûts d'exécution sont les suivants :
+\begin{itemize}
+    \item Coûts d'exécution Version 1 : 5146.99
+    \item Utilisation de scans séquentiels et hash joins principalement.
+    \item Coûts d'exécution Version 2 : 3039.05
+    \item Utilisation de scans séquentiels et hash joins.
+\end{itemize}
+
+La version avec EXCEPT est plus performante, probablement en raison d'une meilleure optimisation des ensembles par le SGBD.
 
 \subsubsection{Plans d'exécution}
-Analyse détaillée.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r2v1ni.png}
+    \caption{Plan d'exécution de la Version 1 de la requête R2 sans index d'optimisation.}
+    \label{fig:plan_r2_v1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r2v2ni.png}
+    \caption{Plan d'exécution de la Version 2 de la requête R2 sans index d'optimisation.}
+    \label{fig:plan_r2_v2}
+\end{figure}
 
 \subsubsection{Optimisation choisie}
-Justification et index.
+Après analyse, nous avons choisi la Version 2 de la requête R2 pour son coût nettement inférieur. Nous avons également mis en place les index listés ci-dessous pour améliorer les performances globales des requêtes similaires.
+\begin{lstlisting}[style=sqlstyle, caption=Mise en place des index pour R2]
+    CREATE INDEX IF NOT EXISTS idx_publication_date_publication ON publication(date_publication);
+    CREATE INDEX IF NOT EXISTS idx_publication_auteur_chercheur ON publication_auteur(id_chercheur);
+    CREATE INDEX IF NOT EXISTS idx_publication_auteur_publication ON publication_auteur(id_publication);
+    CREATE INDEX IF NOT EXISTS idx_chercheur_laboratoire ON chercheur(id_laboratoire);
+\end{lstlisting}
+
+Nous avons constaté une très grande amélioration des performances après l'ajout de ces index, avec une réduction significative du cout d'exécution (de 3039.05 à 943.38).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r2v2i.png}
+    \caption{Plan d'exécution de la Version 2 de la requête R2 avec index d'optimisation.}
+    \label{fig:plan_r2_v2_i}
+\end{figure}
+
+On observe l'utilisation des Index Scan, ainsi que des Bitmap Index Scan plus profond dans le plan d'exécution, ce qui explique la réduction du coût.
 
 \subsection{Requête R3 - Laboratoires conformes}
 
 \subsubsection{Énoncé}
 Laboratoires n'ayant eu aucun jeu de données non conforme en 2024 (sans licence ou sans date\_depot).
 
-\subsubsection{Version 1}
+\subsubsection{Version 1 : Utilisation de NOT EXISTS}
 \begin{lstlisting}[style=sqlstyle, caption=R3 - Version 1]
--- Code SQL Version 1
+    SELECT 
+        l.id AS laboratoire_id,
+        l.nom AS laboratoire_nom,
+        i.nom AS institution_nom
+    FROM laboratoire l
+    JOIN institution i ON l.id_institution = i.id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM projet p
+        JOIN contrat ct ON ct.id_projet = p.id
+        JOIN jeu_donnees jd ON ct.id = jd.id_contrat
+        WHERE p.id_laboratoire_pilote = l.id
+        AND EXTRACT(YEAR FROM COALESCE(jd.date_depot, jd.date_creation)) = 2024
+        AND (jd.licence IS NULL OR jd.date_depot IS NULL)
+    )
 \end{lstlisting}
 
-\subsubsection{Version 2}
+\subsubsection{Version 2: Utilisation de LEFT JOIN}
 \begin{lstlisting}[style=sqlstyle, caption=R3 - Version 2]
--- Code SQL Version 2
+    SELECT 
+        l.id AS laboratoire_id,
+        l.nom AS laboratoire_nom,
+        i.nom AS institution_nom
+    FROM laboratoire l
+    JOIN institution i ON l.id_institution = i.id
+    LEFT JOIN projet p ON l.id = p.id_laboratoire_pilote
+    LEFT JOIN contrat ct ON p.id = ct.id_projet
+    LEFT JOIN jeu_donnees jd ON ct.id = jd.id_contrat
+        AND EXTRACT(YEAR FROM COALESCE(jd.date_depot, jd.date_creation)) = 2024
+        AND (jd.licence IS NULL OR jd.date_depot IS NULL)
+    GROUP BY l.id, l.nom, i.nom
+    HAVING COUNT(jd.id) = 0
 \end{lstlisting}
 
 \subsubsection{Analyse des performances}
-Comparaison détaillée.
+Les deux versions ont été testées sur un ensemble de données volumineux, et sans aucun index d'optimisation (ni même les anciens index présentés pour les deux requêtes précédentes). Les résultats des coûts d'exécution sont les suivants :
+
+\begin{itemize}
+    \item Coûts d'exécution Version 1 : 922.05
+    \item Utilisation de scans séquentiels et nested loop joins (traduction pour boucles imbriquées) principalement. Quelques index scans pour les jointures.
+    \item Coûts d'exécution Version 2 : 2044.89
+    \item Utilisation de scans séquentiels et hash joins principalement.
+\end{itemize}
 
 \subsubsection{Plans d'exécution}
-Captures et analyse.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r3v1ni.png}
+    \caption{Plan d'exécution de la Version 1 de la requête R3 sans index d'optimisation.}
+    \label{fig:plan_r3_v1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r3v2ni.png}
+    \caption{Plan d'exécution de la Version 2 de la requête R3 sans index d'optimisation.}
+    \label{fig:plan_r3_v2}
+\end{figure}
 
 \subsubsection{Optimisation choisie}
-Justification et index.
+Pour les deux versions, nous avons mis en place les index listés ci-dessous.
+\begin{lstlisting}[style=sqlstyle, caption=Mise en place des index pour R3]
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_date_depot ON jeu_donnees(date_depot);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_date_creation ON jeu_donnees(date_creation);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_licence ON jeu_donnees(licence);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_contrat ON jeu_donnees(id_contrat);
+    CREATE INDEX IF NOT EXISTS idx_contrat_projet ON contrat(id_projet);
+    CREATE INDEX IF NOT EXISTS idx_projet_laboratoire ON projet(id_laboratoire_pilote);
+\end{lstlisting}
+
+Cependant, les deux versions ne semblent pas affectées par ces changements (2044.89 toujours pour la Version 2, et 922.05 pour la Version 1). 
+
+Après discussion avec l'IA générative, celui-ci nous a proposé un index bien plus spécifiques pour cette requête :
+\begin{lstlisting}[style=sqlstyle, caption=Index spécifique pour R3]
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_non_conforme_2024 
+        ON jeu_donnees(id_contrat) 
+        WHERE (licence IS NULL OR date_depot IS NULL)
+        AND EXTRACT(YEAR FROM COALESCE(date_depot, date_creation)) = 2024;
+\end{lstlisting}
+
+Avec cet index, la Version 1 possède désormais un coût de 615.77 au lieu de 922.05. La Version 2 possède un coût de 1815.75 au lieu de 2044.89.
+
+Une baisse plus grande sur la Version 1, qui reste donc notre choix final pour cette requête R3.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r3v1i.png}
+    \caption{Plan d'exécution de la Version 1 de la requête R3 avec index d'optimisation.}
+    \label{fig:plan_r3_v1_i}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=.8\textwidth]{imgs/r3v2i.png}
+    \caption{Plan d'exécution de la Version 2 de la requête R3 avec index d'optimisation.}
+    \label{fig:plan_r3_v2_i}
+\end{figure}
 
 \subsection{Synthèse des optimisations}
 
 \subsubsection{Index créés}
-Liste récapitulative de tous les index créés avec leur justification.
+\begin{lstlisting}[style=sqlstyle, caption={Index créés pour les requêtes R1, R2 et R3}]
+    -- Index pour R1
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_date_depot ON jeu_donnees(date_depot);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_date_creation ON jeu_donnees(date_creation);
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_contrat ON jeu_donnees(id_contrat);
+    CREATE INDEX IF NOT EXISTS idx_contrat_projet ON contrat(id_projet);
+    CREATE INDEX IF NOT EXISTS idx_projet_chercheur_projet ON projet_chercheur(id_projet);
+    CREATE INDEX IF NOT EXISTS idx_projet_chercheur_chercheur ON projet_chercheur(id_chercheur);
 
-\begin{table}[H]
-\centering
-\begin{tabular}{@{}lll@{}}
-\toprule
-\textbf{Table} & \textbf{Colonnes} & \textbf{Justification} \\ \midrule
-jeu\_donnees & (date\_depot) & Filtrage par année \\
-chercheur & (id\_projet) & Jointures fréquentes \\
-publication\_auteur & (id\_chercheur, date) & Comptage publications \\ \bottomrule
-\end{tabular}
-\caption{Index créés pour l'optimisation}
-\label{tab:index}
-\end{table}
+    -- Index pour R2
+    CREATE INDEX IF NOT EXISTS idx_publication_date_publication ON publication(date_publication);
+    CREATE INDEX IF NOT EXISTS idx_publication_auteur_chercheur ON publication_auteur(id_chercheur);
+    CREATE INDEX IF NOT EXISTS idx_publication_auteur_publication ON publication_auteur(id_publication);
+    CREATE INDEX IF NOT EXISTS idx_chercheur_laboratoire ON chercheur(id_laboratoire);
 
-\subsubsection{Gains de performance}
-Tableau comparatif des temps d'exécution avant et après optimisation.
+    -- Index pour R3
+    CREATE INDEX IF NOT EXISTS idx_jeu_donnees_non_conforme_2024 
+        ON jeu_donnees(id_contrat) 
+        WHERE (licence IS NULL OR date_depot IS NULL)
+        AND EXTRACT(YEAR FROM COALESCE(date_depot, date_creation)) = 2024;
+    
+\end{lstlisting}
 
 \newpage
 
