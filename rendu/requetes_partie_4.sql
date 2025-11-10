@@ -1,3 +1,4 @@
+-- Authors: Sanna Thomas, Furfaro Thomas, Chêne Arlette
 -- R1
 
 -- VERSION 1 : Avec sous-requête pour compter les chercheurs

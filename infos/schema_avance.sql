@@ -153,7 +153,7 @@ GROUP BY p.id, p.titre, p.discipline, p.budget_annuel_eur, p.date_debut, p.date_
 -- 3.3. ATTRIBUTION DES PRIVILÈGES
 
 -- Privilèges pour ADMINISTRATEUR (accès complet)
-GRANT USAGE ON SCHEMA univ_recherche TO role_data_manager;
+GRANT USAGE ON SCHEMA univ_recherche TO role_administrateur;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA univ_recherche TO role_administrateur;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA univ_recherche TO role_administrateur;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA univ_recherche TO role_administrateur;
@@ -167,7 +167,6 @@ GRANT SELECT ON v_publications_chercheur TO role_data_manager;
 
 -- Privilèges pour CHERCHEUR (accès restreint à ses projets et données)
 GRANT USAGE ON SCHEMA univ_recherche TO role_chercheur;
-
 GRANT SELECT ON projet, chercheur, laboratoire, institution, publication TO role_chercheur;
 GRANT SELECT ON v_mes_projets, v_mes_donnees, v_publications_chercheur TO role_chercheur;
 GRANT INSERT ON publication, publication_auteur, jeu_donnees TO role_chercheur;
